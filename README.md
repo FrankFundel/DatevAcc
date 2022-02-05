@@ -7,4 +7,4 @@
 # Notice
 
 - If more then one month lies between the last entry and today, the download gets split into parts.
-- If last entry is not in the same fiscal year, the download starts from the start of the stored fiscal year.
+- If last entry is not in the same fiscal year, the download starts from the beginning of the stored fiscal year.

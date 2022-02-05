@@ -165,7 +165,6 @@ const main = async () => {
               addPostings(postings);
               db.run("commit");
             } else {
-              let today = new Date();
               const getDateString = (month) => {
                 let d = new Date(
                   parseInt(fiscalYear.substr(0, 4)),
