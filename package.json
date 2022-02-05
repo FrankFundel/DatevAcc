@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "axios": "^0.25.0",
+    "cli-progress": "^3.10.0",
+    "moment": "^2.29.1",
+    "moment-timezone": "^0.5.34",
+    "readline-sync": "^1.4.10",
+    "sqlite3": "^5.0.2"
+  }
+}
