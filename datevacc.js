@@ -69,7 +69,7 @@ const main = async () => {
       );
       if (fiscalRes.status == 200) {
         var fiscalYears = fiscalRes.data;
-        fiscalYearIds = fiscalYears.map((f) => f.id);
+        fiscalYearIds = fiscalYears.map((f) => f.id.substr(0, 4));
       }
       var fIndex = readlineSync.keyInSelect(
         fiscalYearIds,
@@ -92,123 +92,130 @@ const main = async () => {
         return;
       }
       console.log("Konfiguration wurde gespeichert.");
-    });
 
-    // read account postings
-    let db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        return console.error(err.message);
-      }
-      console.log("Mit der SQlite Datenbank verbunden.");
-    });
+      console.log("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
 
-    db.serialize(async () => {
-      db.run(
-        "CREATE TABLE IF NOT EXISTS account_postings (id TEXT UNIQUE, date DATE, content TEXT)"
-      );
+      // read account postings
+      let db = new sqlite3.Database(dbPath, (err) => {
+        if (err) {
+          return console.error(err.message);
+        }
+        console.log("Mit der SQlite Datenbank verbunden.");
+      });
 
-      // get last entry date from database
-      var lastDate;
-      db.get(
-        "SELECT date FROM account_postings ORDER BY date DESC",
-        async (err, row) => {
-          if (row) lastDate = row.date;
-          console.log("Letzter Eintrag: ", lastDate);
+      db.serialize(async () => {
+        db.run(
+          "CREATE TABLE IF NOT EXISTS account_postings (id TEXT UNIQUE, date DATE, content TEXT)"
+        );
 
-          // get postings after this date
-          const getPostings = async (date) => {
-            var postings = [];
-            var postingOptions = { ...options };
-            postingOptions.params = { filter: date };
+        // get last entry date from database
+        var lastDate;
+        db.get(
+          "SELECT date FROM account_postings ORDER BY date DESC",
+          async (err, row) => {
+            if (row) lastDate = row.date;
+            console.log("Letzter Eintrag: ", lastDate);
 
-            var postingRes = await axios.get(
-              hostname +
-                "datev/api/accounting/v1/clients/" +
-                clientid +
-                "/fiscal-years/" +
-                fiscalYear +
-                "/account-postings",
-              postingOptions
-            );
-            if (postingRes.status == 200) {
-              postings = postingRes.data;
-            }
-            return postings;
-          };
+            // get postings after this date
+            const getPostings = async (date) => {
+              var postings = [];
+              var postingOptions = { ...options };
+              postingOptions.params = { filter: date };
 
-          const prog = new cliProgress.SingleBar(
-            {},
-            cliProgress.Presets.shades_classic
-          );
-
-          const addPostings = (p, inc = true) => {
-            for (let post of p) {
-              db.run(
-                "INSERT INTO account_postings (id, date, content) VALUES (?, ?, ?)",
-                [post.id, post.date, JSON.stringify(post)],
-                (err) => {
-                  if (err) {
-                    // Already inserted.
-                  }
-                }
+              var postingRes = await axios.get(
+                hostname +
+                  "datev/api/accounting/v1/clients/" +
+                  clientid +
+                  "/fiscal-years/" +
+                  fiscalYear +
+                  "/account-postings",
+                postingOptions
               );
-              if (inc) prog.increment(1);
-            }
-          };
-
-          if (lastDate && moment().diff(moment(lastDate), "months") < 1) {
-            const postings = await getPostings("date ge " + lastDate);
-
-            prog.start(postings.length, 0);
-            db.run("begin transaction");
-            addPostings(postings);
-            db.run("commit");
-          } else {
-            let today = new Date();
-            const getDateString = (month) => {
-              let d = new Date(parseInt(fiscalYear.substr(0, 4)), month, 1, 0);
-              return moment(d).tz("Europe/Berlin").format();
+              if (postingRes.status == 200) {
+                postings = postingRes.data;
+              }
+              return postings;
             };
 
-            // if last date is present and in the same fiscal year, start at that month from beginning
-            let start = 0;
-            if (
-              lastDate &&
-              new Date(lastDate).getFullYear() ==
-                parseInt(fiscalYear.substr(0, 4))
-            )
-              start = new Date(lastDate).getMonth();
+            const prog = new cliProgress.SingleBar(
+              {},
+              cliProgress.Presets.shades_classic
+            );
 
-            prog.start(12, start);
-            for (let month = 0; month <= 11; month++) {
+            const addPostings = (p, inc = true) => {
+              for (let post of p) {
+                db.run(
+                  "INSERT INTO account_postings (id, date, content) VALUES (?, ?, ?)",
+                  [post.id, post.date, JSON.stringify(post)],
+                  (err) => {
+                    if (err) {
+                      // Already inserted.
+                    }
+                  }
+                );
+                if (inc) prog.increment(1);
+              }
+            };
+
+            if (lastDate && moment().diff(moment(lastDate), "months") < 1) {
+              const postings = await getPostings("date ge " + lastDate);
+
+              prog.start(postings.length, 0);
               db.run("begin transaction");
-              let postings = await getPostings(
-                "date ge " +
-                  getDateString(month, 1) +
-                  " and date le " +
-                  getDateString(month + 1, 1)
-              );
-              addPostings(postings, false);
-              prog.increment(1);
-              await new Promise((resolve, reject) => {
-                db.run("commit", (err) => {
-                  if (err) return reject();
-                  resolve();
-                });
-              });
-            }
-          }
+              addPostings(postings);
+              db.run("commit");
+            } else {
+              let today = new Date();
+              const getDateString = (month) => {
+                let d = new Date(
+                  parseInt(fiscalYear.substr(0, 4)),
+                  month,
+                  1,
+                  0
+                );
+                return moment(d).tz("Europe/Berlin").format();
+              };
 
-          // Close connection
-          db.close((err) => {
-            prog.stop();
-            if (err) {
-              return console.error(err.message);
+              // if last date is present and in the same fiscal year, start at that month from beginning
+              let start = 0;
+              if (
+                lastDate &&
+                new Date(lastDate).getFullYear() ==
+                  parseInt(fiscalYear.substr(0, 4))
+              )
+                start = new Date(lastDate).getMonth();
+
+              prog.start(12, start);
+              for (let month = 0; month <= 11; month++) {
+                db.run("begin transaction");
+                let postings = await getPostings(
+                  "date ge " +
+                    getDateString(month, 1) +
+                    " and date le " +
+                    getDateString(month + 1, 1)
+                );
+                addPostings(postings, false);
+                prog.increment(1);
+                await new Promise((resolve, reject) => {
+                  db.run("commit", (err) => {
+                    if (err) return reject();
+                    resolve();
+                  });
+                });
+              }
             }
-            console.log("Datenbankverbindung geschlossen.");
-          });
-        }
-      );
+
+            // Close connection
+            db.close((err) => {
+              prog.stop();
+              if (err) {
+                return console.error(err.message);
+              }
+              console.log("Datenbankverbindung geschlossen.");
+            });
+          }
+        );
+      });
     });
   } catch (err) {
     console.log("Fehler beim Lesen der Konfiguration.");
