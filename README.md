@@ -1,10 +1,25 @@
 # DatevAcc
 
-- Console tool for loading Datev account postings in local SQLite Database of type .db
-- Saves the last entry and downloads only the new entries since the last one.
-- Has a config.json for server and login information and fiscal year (has to be changed every new year).
+Console tool for loading Datev account postings in local SQLite Database of type .db
 
-# Notice
+# Documentation
 
-- If more then one month lies between the last entry and today, the download gets split into parts.
-- If last entry is not in the same fiscal year, the download starts from the beginning of the stored fiscal year.
+## Installation
+
+git clone project
+cd DatecAcc
+npm install
+
+## Usage
+
+1. node datevacc.js
+2. Enter hostname (http://server:port/)
+3. Enter username and password
+4. Select clients to be retrieved
+5. The tool starts downloaded all account postings from all fiscal years
+
+## More
+
+- node datevacc.js thisyear
+- node datevacc.js lastyear
+- node datevacc.js startat [year]

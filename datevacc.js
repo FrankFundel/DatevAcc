@@ -117,7 +117,7 @@ const main = async () => {
       });
 
       const doProcedure = async (client, fiscalYear) => {
-        console.log("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
+        console.info("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
 
         return new Promise((resolve, reject) => {
           const prog = new cliProgress.SingleBar(
@@ -250,7 +250,7 @@ const main = async () => {
 
       // For each client
       for (let client of clients) {
-        console.log("Verwendeter Klient:", client.name);
+        console.info("Verwendeter Klient:", client.name);
 
         // Get fiscal years
         var fiscalYearIds = [];
@@ -282,6 +282,15 @@ const main = async () => {
             await doProcedure(client, fiscalYear);
           } else {
             console.warn("Dieses Jahr ist nicht verfügbar!");
+          }
+        } else if (arg == "startat") {
+          let startat = process.argv[3];
+          if (startat) {
+            var ok = false;
+            for (let fiscalYear of fiscalYearIds) {
+              if (fiscalYear.startsWith(startat)) ok = true;
+              if (ok) await doProcedure(client, fiscalYear);
+            }
           }
         } else {
           // if (arg == "all") {
