@@ -131,128 +131,117 @@ const main = async () => {
                 account_postings_schema
             );
 
-            // get last entry date from database
+            // get postings after this date
+            const getPostings = async (date) => {
+              var postings = [];
+              var postingOptions = { ...options };
+              postingOptions.params = { filter: date };
+
+              var postingRes = await axios.get(
+                hostname +
+                  "datev/api/accounting/v1/clients/" +
+                  client.id +
+                  "/fiscal-years/" +
+                  fiscalYear +
+                  "/account-postings",
+                postingOptions
+              );
+              if (postingRes.status == 200) {
+                postings = postingRes.data;
+              }
+              return postings;
+            };
+
+            const addPostings = (p, inc = true) => {
+              for (let post of p) {
+                db.run(
+                  "INSERT INTO '" +
+                    client.name +
+                    "' " +
+                    account_postings +
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  [
+                    post.id,
+                    post.date,
+                    post.account_number,
+                    post.accounting_sequence_id,
+                    post.amount_debit,
+                    post.amount_credit,
+                    post.contra_account_number,
+                    post.posting_description,
+                    post.advance_payment ? post.advance_payment.tax_key : null,
+                    post.tax_rate,
+                    post.kost1_cost_center_id,
+                    post.kost2_cost_center_id,
+                    post.is_opening_balance_posting,
+                  ],
+                  (err) => {
+                    if (err) {
+                      // Already inserted.
+                    }
+                  }
+                );
+                if (inc) prog.increment(1);
+              }
+            };
+
+            /* get last entry date from database
             var lastDate;
             db.get(
               "SELECT date FROM '" + client.name + "' ORDER BY date DESC",
               async (err, row) => {
                 if (row) lastDate = row.date;
                 console.log("Letzter Eintrag: ", lastDate);
+              });*/
 
-                // get postings after this date
-                const getPostings = async (date) => {
-                  var postings = [];
-                  var postingOptions = { ...options };
-                  postingOptions.params = { filter: date };
+            /* Postings vom letzten monat auf ein mal holen
+            if (lastDate && moment().diff(moment(lastDate), "months") < 1) {
+              const postings = await getPostings("date ge " + lastDate);
 
-                  var postingRes = await axios.get(
-                    hostname +
-                      "datev/api/accounting/v1/clients/" +
-                      client.id +
-                      "/fiscal-years/" +
-                      fiscalYear +
-                      "/account-postings",
-                    postingOptions
-                  );
-                  if (postingRes.status == 200) {
-                    postings = postingRes.data;
-                  }
-                  return postings;
-                };
+              prog.start(postings.length, 0);
+              db.run("begin transaction");
+              addPostings(postings);
+              db.run("commit");
+            } else {*/
+            // Postings in monate zerstückelt holen
+            const getDateString = (month) => {
+              let d = new Date(parseInt(fiscalYear.substr(0, 4)), month, 1, 0);
+              return moment(d).tz("Europe/Berlin").format();
+            };
 
-                const addPostings = (p, inc = true) => {
-                  for (let post of p) {
-                    db.run(
-                      "INSERT INTO '" +
-                        client.name +
-                        "' " +
-                        account_postings +
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                      [
-                        post.id,
-                        post.date,
-                        post.account_number,
-                        post.accounting_sequence_id,
-                        post.amount_debit,
-                        post.amount_credit,
-                        post.contra_account_number,
-                        post.posting_description,
-                        post.advance_payment
-                          ? post.advance_payment.tax_key
-                          : null,
-                        post.tax_rate,
-                        post.kost1_cost_center_id,
-                        post.kost2_cost_center_id,
-                        post.is_opening_balance_posting,
-                      ],
-                      (err) => {
-                        if (err) {
-                          // Already inserted.
-                        }
-                      }
-                    );
-                    if (inc) prog.increment(1);
-                  }
-                };
+            // if last date is present and in the same fiscal year, start at that month from beginning
+            let start = 0;
+            /*if (
+              lastDate &&
+              new Date(lastDate).getFullYear() ==
+                parseInt(fiscalYear.substr(0, 4))
+            ) {
+              start = new Date(lastDate).getMonth();
+            }
+            console.log("Letzter Eintrag zu lange her, starte ab Monat", start);*/
 
-                // Postings vom letzten monat auf ein mal holen
-                if (lastDate && moment().diff(moment(lastDate), "months") < 1) {
-                  const postings = await getPostings("date ge " + lastDate);
+            prog.start(12, start);
+            for (let month = 0; month <= 11; month++) {
+              db.run("begin transaction");
+              let postings = await getPostings(
+                "date ge " +
+                  getDateString(month, 1) +
+                  " and date le " +
+                  getDateString(month + 1, 1)
+              );
+              addPostings(postings, false);
+              prog.increment(1);
+              await new Promise((resolve, reject) => {
+                db.run("commit", (err) => {
+                  if (err) return reject();
+                  resolve();
+                });
+              });
+            }
+            //}
 
-                  prog.start(postings.length, 0);
-                  db.run("begin transaction");
-                  addPostings(postings);
-                  db.run("commit");
-                } else {
-                  // Postings in monate zerstückelt holen
-                  const getDateString = (month) => {
-                    let d = new Date(
-                      parseInt(fiscalYear.substr(0, 4)),
-                      month,
-                      1,
-                      0
-                    );
-                    return moment(d).tz("Europe/Berlin").format();
-                  };
-
-                  // if last date is present and in the same fiscal year, start at that month from beginning
-                  let start = 0;
-                  if (
-                    lastDate &&
-                    new Date(lastDate).getFullYear() ==
-                      parseInt(fiscalYear.substr(0, 4))
-                  )
-                    start = new Date(lastDate).getMonth();
-
-                  console.log(
-                    "Letzter Eintrag zu lange her, starte ab Monat",
-                    start
-                  );
-
-                  prog.start(12, start);
-                  for (let month = 0; month <= 11; month++) {
-                    db.run("begin transaction");
-                    let postings = await getPostings(
-                      "date ge " +
-                        getDateString(month, 1) +
-                        " and date le " +
-                        getDateString(month + 1, 1)
-                    );
-                    addPostings(postings, false);
-                    prog.increment(1);
-                    await new Promise((resolve, reject) => {
-                      db.run("commit", (err) => {
-                        if (err) return reject();
-                        resolve();
-                      });
-                    });
-                  }
-                }
-
-                resolve();
-                prog.stop();
-              }
-            );
+            resolve();
+            prog.stop();
           });
         });
       };
