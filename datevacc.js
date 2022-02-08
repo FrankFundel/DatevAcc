@@ -102,8 +102,8 @@ const main = async () => {
     });
     fs.writeFile(configPath, data, async (err) => {
       if (err) {
-        console.log("Fehler beim Schreiben der Konfiguration.");
-        console.log(err.message);
+        console.warn("Fehler beim Schreiben der Konfiguration.");
+        console.warn(err.message);
         return;
       }
       console.log("Konfiguration wurde gespeichert.");
@@ -117,6 +117,8 @@ const main = async () => {
       });
 
       const doProcedure = async (client, fiscalYear) => {
+        console.log("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
+
         return new Promise((resolve, reject) => {
           const prog = new cliProgress.SingleBar(
             {},
@@ -264,12 +266,29 @@ const main = async () => {
           fiscalYearIds = fiscalYears.map((f) => f.id);
         }
 
-        // For each fiscal year
-        for (let fiscalYear of fiscalYearIds) {
-          console.log("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
-
-          // read account postings
-          await doProcedure(client, fiscalYear);
+        const arg = process.argv[2];
+        if (arg == "lastyear") {
+          let fiscalYear;
+          if (fiscalYearIds.length >= 2) {
+            fiscalYear = fiscalYearIds[fiscalYearIds.length - 2];
+            await doProcedure(client, fiscalYear);
+          } else {
+            console.warn("Letztes Jahr ist nicht verfügbar!");
+          }
+        } else if (arg == "thisyear") {
+          let fiscalYear;
+          if (fiscalYearIds.length >= 1) {
+            fiscalYear = fiscalYearIds[fiscalYearIds.length - 1];
+            await doProcedure(client, fiscalYear);
+          } else {
+            console.warn("Dieses Jahr ist nicht verfügbar!");
+          }
+        } else {
+          // if (arg == "all") {
+          // For each fiscal year
+          for (let fiscalYear of fiscalYearIds) {
+            await doProcedure(client, fiscalYear);
+          }
         }
       }
 
@@ -282,8 +301,8 @@ const main = async () => {
       });
     });
   } catch (err) {
-    console.log("Fehler beim Lesen der Konfiguration.");
-    console.log(err);
+    console.warn("Fehler beim Lesen der Konfiguration.");
+    console.warn(err);
   }
 };
 
