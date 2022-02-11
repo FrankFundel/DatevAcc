@@ -6,9 +6,9 @@ Console tool for loading Datev account postings in a MySQL Database.
 
 ## Installation
 
-git clone project
-cd DatecAcc
-npm install
+1. git clone project
+2. cd DatecAcc
+3. npm install
 
 ## Usage
 
