@@ -1,6 +1,6 @@
 # DatevAcc
 
-Console tool for loading Datev account postings in local SQLite Database of type .db
+Console tool for loading Datev account postings in a MySQL Database.
 
 # Documentation
 
@@ -16,7 +16,8 @@ npm install
 2. Enter hostname (http://server:port/)
 3. Enter username and password
 4. Select clients to be retrieved
-5. The tool starts downloaded all account postings from all fiscal years
+5. Enter MySQL Data
+6. The tool starts downloading all account postings from all fiscal years
 
 ## More
 

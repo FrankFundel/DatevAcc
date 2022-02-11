@@ -1,7 +1,7 @@
 const axios = require("axios");
 var inquirer = require("inquirer");
 var fs = require("fs");
-var sqlite3 = require("sqlite3").verbose();
+var mysql = require("mysql2/promise");
 const cliProgress = require("cli-progress");
 var moment = require("moment-timezone");
 
@@ -22,7 +22,16 @@ const main = async () => {
     if (fs.existsSync(configPath)) {
       data = fs.readFileSync(configPath);
     }
-    var { hostname, username, password, clients } = JSON.parse(data);
+    var {
+      hostname,
+      username,
+      password,
+      clients,
+      dbHost,
+      dbUser,
+      dbPassword,
+      dbDatabase,
+    } = JSON.parse(data);
 
     var questions = [];
 
@@ -48,7 +57,7 @@ const main = async () => {
     }
     if (!password) {
       password = (
-        await questions.push({
+        await inquirer.prompt({
           type: "password",
           name: "password",
           message: "Wie lautet das Passwort?",
@@ -94,11 +103,52 @@ const main = async () => {
       }
     }
 
+    if (!dbHost) {
+      dbHost = (
+        await inquirer.prompt({
+          type: "input",
+          name: "dbHost",
+          message: "Wie lautet die MySQL-Adresse?",
+        })
+      ).dbHost;
+    }
+    if (!dbUser) {
+      dbUser = (
+        await inquirer.prompt({
+          type: "input",
+          name: "dbUser",
+          message: "Wie lautet der MySQL-Nutzername?",
+        })
+      ).dbUser;
+    }
+    if (!dbPassword) {
+      dbPassword = (
+        await inquirer.prompt({
+          type: "password",
+          name: "dbPassword",
+          message: "Wie lautet das MySQL-Passwort?",
+        })
+      ).dbPassword;
+    }
+    if (!dbDatabase) {
+      dbDatabase = (
+        await inquirer.prompt({
+          type: "input",
+          name: "dbDatabase",
+          message: "Wie lautet die MySQL-Datenbank?",
+        })
+      ).dbDatabase;
+    }
+
     data = JSON.stringify({
       hostname,
       username,
       password,
       clients,
+      dbHost,
+      dbUser,
+      dbPassword,
+      dbDatabase,
     });
     fs.writeFile(configPath, data, async (err) => {
       if (err) {
@@ -109,143 +159,117 @@ const main = async () => {
       console.log("Konfiguration wurde gespeichert.");
 
       // Start of the routine
-      let db = new sqlite3.Database(dbPath, (err) => {
-        if (err) {
-          return console.error(err.message);
-        }
-        console.log("Mit der SQlite Datenbank verbunden.");
+      var con = await mysql.createConnection({
+        host: dbHost,
+        user: dbUser,
+        password: dbPassword,
+        database: dbDatabase,
       });
+      console.log("Mit der Datenbank verbunden.");
 
       const doProcedure = async (client, fiscalYear) => {
         console.info("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
 
-        return new Promise((resolve, reject) => {
-          const prog = new cliProgress.SingleBar(
-            {},
-            cliProgress.Presets.shades_classic
+        const prog = new cliProgress.SingleBar(
+          {},
+          cliProgress.Presets.shades_classic
+        );
+
+        await con.execute(
+          "CREATE TABLE IF NOT EXISTS `" +
+            client.id +
+            "` " +
+            account_postings_schema
+        );
+
+        // get postings after this date
+        const getPostings = async (date) => {
+          var postings = [];
+          var postingOptions = { ...options };
+          postingOptions.params = { filter: date };
+
+          var postingRes = await axios.get(
+            hostname +
+              "datev/api/accounting/v1/clients/" +
+              client.id +
+              "/fiscal-years/" +
+              fiscalYear +
+              "/account-postings",
+            postingOptions
           );
+          if (postingRes.status == 200) {
+            postings = postingRes.data;
+          }
+          return postings;
+        };
 
-          db.serialize(async () => {
-            db.run(
-              "CREATE TABLE IF NOT EXISTS '" +
-                client.name +
-                "' " +
-                account_postings_schema
-            );
-
-            // get postings after this date
-            const getPostings = async (date) => {
-              var postings = [];
-              var postingOptions = { ...options };
-              postingOptions.params = { filter: date };
-
-              var postingRes = await axios.get(
-                hostname +
-                  "datev/api/accounting/v1/clients/" +
+        const addPostings = async (p, inc = true) => {
+          let dups = 0;
+          for (let post of p) {
+            try {
+              await con.query(
+                "INSERT INTO `" +
                   client.id +
-                  "/fiscal-years/" +
-                  fiscalYear +
-                  "/account-postings",
-                postingOptions
+                  "` " +
+                  account_postings +
+                  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                  post.id,
+                  post.date,
+                  post.account_number,
+                  post.accounting_sequence_id,
+                  post.amount_debit,
+                  post.amount_credit,
+                  post.contra_account_number,
+                  post.posting_description,
+                  post.advance_payment ? post.advance_payment.tax_key : null,
+                  post.tax_rate,
+                  post.kost1_cost_center_id,
+                  post.kost2_cost_center_id,
+                  post.is_opening_balance_posting,
+                ]
               );
-              if (postingRes.status == 200) {
-                postings = postingRes.data;
+            } catch (err) {
+              if (err.code == "ER_DUP_ENTRY") {
+                dups++;
+                // Already inserted.
               }
-              return postings;
-            };
-
-            const addPostings = (p, inc = true) => {
-              for (let post of p) {
-                db.run(
-                  "INSERT INTO '" +
-                    client.name +
-                    "' " +
-                    account_postings +
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  [
-                    post.id,
-                    post.date,
-                    post.account_number,
-                    post.accounting_sequence_id,
-                    post.amount_debit,
-                    post.amount_credit,
-                    post.contra_account_number,
-                    post.posting_description,
-                    post.advance_payment ? post.advance_payment.tax_key : null,
-                    post.tax_rate,
-                    post.kost1_cost_center_id,
-                    post.kost2_cost_center_id,
-                    post.is_opening_balance_posting,
-                  ],
-                  (err) => {
-                    if (err) {
-                      // Already inserted.
-                    }
-                  }
-                );
-                if (inc) prog.increment(1);
-              }
-            };
-
-            /* get last entry date from database
-            var lastDate;
-            db.get(
-              "SELECT date FROM '" + client.name + "' ORDER BY date DESC",
-              async (err, row) => {
-                if (row) lastDate = row.date;
-                console.log("Letzter Eintrag: ", lastDate);
-              });*/
-
-            /* Postings vom letzten monat auf ein mal holen
-            if (lastDate && moment().diff(moment(lastDate), "months") < 1) {
-              const postings = await getPostings("date ge " + lastDate);
-
-              prog.start(postings.length, 0);
-              db.run("begin transaction");
-              addPostings(postings);
-              db.run("commit");
-            } else {*/
-            // Postings in monate zerstückelt holen
-            const getDateString = (month) => {
-              let d = new Date(parseInt(fiscalYear.substr(0, 4)), month, 1, 0);
-              return moment(d).tz("Europe/Berlin").format();
-            };
-
-            // if last date is present and in the same fiscal year, start at that month from beginning
-            let start = 0;
-            /*if (
-              lastDate &&
-              new Date(lastDate).getFullYear() ==
-                parseInt(fiscalYear.substr(0, 4))
-            ) {
-              start = new Date(lastDate).getMonth();
             }
-            console.log("Letzter Eintrag zu lange her, starte ab Monat", start);*/
+            if (inc) prog.increment(1);
+          }
 
-            prog.start(12, start);
-            for (let month = 0; month <= 11; month++) {
-              db.run("begin transaction");
-              let postings = await getPostings(
-                "date ge " +
-                  getDateString(month, 1) +
-                  " and date le " +
-                  getDateString(month + 1, 1)
-              );
-              addPostings(postings, false);
-              prog.increment(1);
-              await new Promise((resolve, reject) => {
-                db.run("commit", (err) => {
-                  if (err) return reject();
-                  resolve();
-                });
-              });
-            }
-            //}
+          return dups;
+        };
 
-            resolve();
-            prog.stop();
-          });
-        });
+        const getDateString = (month) => {
+          let d = new Date(parseInt(fiscalYear.substr(0, 4)), month, 1, 0);
+          return moment(d).tz("Europe/Berlin").format();
+        };
+
+        // if last date is present and in the same fiscal year, start at that month from beginning
+        let start = 0,
+          posts = 0,
+          dups = 0;
+        prog.start(12, start);
+
+        for (let month = 0; month <= 11; month++) {
+          await con.query("START TRANSACTION");
+          let postings = await getPostings(
+            "date ge " +
+              getDateString(month, 1) +
+              " and date le " +
+              getDateString(month + 1, 1)
+          );
+          let d = await addPostings(postings, false);
+          posts += postings.length;
+          dups += d;
+          prog.increment(1);
+          await con.query("COMMIT");
+        }
+
+        console.log("\nPostings:", posts, "Duplikate:", dups);
+
+        prog.stop();
       };
 
       // For each client
@@ -293,8 +317,6 @@ const main = async () => {
             }
           }
         } else {
-          // if (arg == "all") {
-          // For each fiscal year
           for (let fiscalYear of fiscalYearIds) {
             await doProcedure(client, fiscalYear);
           }
@@ -302,12 +324,8 @@ const main = async () => {
       }
 
       // Close connection
-      db.close((err) => {
-        if (err) {
-          return console.error(err.message);
-        }
-        console.log("Datenbankverbindung geschlossen.");
-      });
+      await con.end();
+      console.log("Datenbankverbindung geschlossen.");
     });
   } catch (err) {
     console.warn("Fehler beim Lesen der Konfiguration.");
