@@ -8,9 +8,9 @@ var moment = require("moment-timezone");
 const configPath = "./config.json";
 const dbPath = "./database.db";
 
-const account_postings_schema = `(id TEXT UNIQUE, date DATE, account_number INT, accounting_sequence_id TEXT, 
-  amount_debit DECIMAL(10, 2), amount_credit DECIMAL(10, 2), contra_account_number INT, posting_description TEXT, 
-  tax_key INT, tax_rate DECIMAL(10, 2), kost1_cost_center_id TEXT, kost2_cost_center_id TEXT, is_opening_balance_posting BOOL)`;
+const account_postings_schema = `(id VARCHAR(20) UNIQUE, date DATE, account_number INT, accounting_sequence_id VARCHAR(20), 
+  amount_debit DECIMAL(10, 2), amount_credit DECIMAL(10, 2), contra_account_number INT, posting_description VARCHAR(255), 
+  tax_key INT, tax_rate DECIMAL(10, 2), kost1_cost_center_id VARCHAR(10), kost2_cost_center_id VARCHAR(10), is_opening_balance_posting BOOL)`;
 
 const account_postings = `(id, date, account_number, accounting_sequence_id, 
     amount_debit, amount_credit, contra_account_number, posting_description, 
