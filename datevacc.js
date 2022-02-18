@@ -16,6 +16,10 @@ const account_postings = `(id, date, account_number, accounting_sequence_id,
     amount_debit, amount_credit, contra_account_number, posting_description, 
     tax_key, tax_rate, kost1_cost_center_id, kost2_cost_center_id, is_opening_balance_posting)`;
 
+if (!fs.existsSync("logs/")) {
+  fs.mkdirSync("logs/");
+}
+
 var logFile = fs.createWriteStream(
   "logs/" + moment().format("DDMMYYYYHHmm") + ".txt",
   {
@@ -24,10 +28,10 @@ var logFile = fs.createWriteStream(
 );
 
 var logContent = "";
-const log = (data) => {
-  console.log(data);
-  logFile.write(util.format(data) + "\n");
-  logContent += util.format(data) + "\n";
+const log = (...data) => {
+  console.log(...data);
+  logFile.write(util.format(...data) + "\n");
+  logContent += util.format(...data) + "\n";
 };
 
 process.on("uncaughtException", function (err) {
@@ -193,7 +197,7 @@ const main = async () => {
     );
 
     const doProcedure = async (client, fiscalYear) => {
-      console.info("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
+      log("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
 
       const prog = new cliProgress.SingleBar(
         {},
@@ -299,7 +303,7 @@ const main = async () => {
 
     // For each client
     for (let client of clients) {
-      console.info("Verwendeter Klient:", client.name);
+      log("Verwendeter Klient:", client.name);
 
       // Get fiscal years
       var fiscalYearIds = [];
