@@ -4,9 +4,9 @@ var fs = require("fs");
 var mysql = require("mysql2/promise");
 const cliProgress = require("cli-progress");
 var moment = require("moment-timezone");
+var util = require("util");
 
 const configPath = "./config.json";
-const dbPath = "./database.db";
 
 const account_postings_schema = `(id VARCHAR(20) UNIQUE, date DATE, account_number INT, accounting_sequence_id VARCHAR(20), 
   amount_debit DECIMAL(10, 2), amount_credit DECIMAL(10, 2), contra_account_number INT, posting_description VARCHAR(255), 
@@ -15,6 +15,30 @@ const account_postings_schema = `(id VARCHAR(20) UNIQUE, date DATE, account_numb
 const account_postings = `(id, date, account_number, accounting_sequence_id, 
     amount_debit, amount_credit, contra_account_number, posting_description, 
     tax_key, tax_rate, kost1_cost_center_id, kost2_cost_center_id, is_opening_balance_posting)`;
+
+var logFile = fs.createWriteStream(
+  "logs/" + moment().format("DDMMYYYYHHmm") + ".txt",
+  {
+    flags: "a",
+  }
+);
+
+var logContent = "";
+const log = (data) => {
+  console.log(data);
+  logFile.write(util.format(data) + "\n");
+  logContent += util.format(data) + "\n";
+};
+
+process.on("uncaughtException", function (err) {
+  log(err);
+  process.exit();
+});
+
+String.prototype.replaceAll = function (search, replacement) {
+  var target = this;
+  return target.replace(new RegExp(search, "g"), replacement);
+};
 
 const main = async () => {
   try {
@@ -99,7 +123,7 @@ const main = async () => {
         ).selectedClients;
 
         clients = selectedClients.map((c) => clientObject[c]);
-        console.log("Client IDs: ", clients);
+        log("Client IDs: ", clients);
       }
     }
 
@@ -150,187 +174,200 @@ const main = async () => {
       dbPassword,
       dbDatabase,
     });
-    fs.writeFile(configPath, data, async (err) => {
-      if (err) {
-        console.warn("Fehler beim Schreiben der Konfiguration.");
-        console.warn(err.message);
-        return;
-      }
-      console.log("Konfiguration wurde gespeichert.");
+    var data = fs.writeFileSync(configPath, data);
+    log("Konfiguration wurde gespeichert.");
 
-      // Start of the routine
-      var con = await mysql.createConnection({
-        host: dbHost,
-        user: dbUser,
-        password: dbPassword,
-        database: dbDatabase,
-      });
-      console.log("Mit der Datenbank verbunden.");
+    // Start of the routine
+    var con = await mysql.createConnection({
+      host: dbHost,
+      user: dbUser,
+      password: dbPassword,
+      database: dbDatabase,
+    });
+    log("Mit der Datenbank verbunden.");
 
-      const doProcedure = async (client, fiscalYear) => {
-        console.info("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
+    await con.execute(
+      "CREATE TABLE IF NOT EXISTS `" +
+        username +
+        "-log` (id INT NOT NULL PRIMARY KEY AUTO_INCREMENT, date DATE NOT NULL, log TEXT)"
+    );
 
-        const prog = new cliProgress.SingleBar(
-          {},
-          cliProgress.Presets.shades_classic
-        );
+    const doProcedure = async (client, fiscalYear) => {
+      console.info("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
 
-        await con.execute(
-          "CREATE TABLE IF NOT EXISTS `" +
-            client.id +
-            "` " +
-            account_postings_schema
-        );
+      const prog = new cliProgress.SingleBar(
+        {},
+        cliProgress.Presets.shades_classic
+      );
 
-        // get postings after this date
-        const getPostings = async (date) => {
-          var postings = [];
-          var postingOptions = { ...options };
-          postingOptions.params = { filter: date };
+      await con.execute(
+        "CREATE TABLE IF NOT EXISTS `" +
+          client.id +
+          "` " +
+          account_postings_schema
+      );
 
-          var postingRes = await axios.get(
-            hostname +
-              "datev/api/accounting/v1/clients/" +
-              client.id +
-              "/fiscal-years/" +
-              fiscalYear +
-              "/account-postings",
-            postingOptions
-          );
-          if (postingRes.status == 200) {
-            postings = postingRes.data;
-          }
-          return postings;
-        };
+      // get postings after this date
+      const getPostings = async (date) => {
+        var postings = [];
+        var postingOptions = { ...options };
+        postingOptions.params = { filter: date };
 
-        const addPostings = async (p, inc = true) => {
-          let dups = 0;
-          for (let post of p) {
-            try {
-              await con.query(
-                "INSERT INTO `" +
-                  client.id +
-                  "` " +
-                  account_postings +
-                  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                  post.id,
-                  post.date,
-                  post.account_number,
-                  post.accounting_sequence_id,
-                  post.amount_debit,
-                  post.amount_credit,
-                  post.contra_account_number,
-                  post.posting_description,
-                  post.advance_payment ? post.advance_payment.tax_key : null,
-                  post.tax_rate,
-                  post.kost1_cost_center_id,
-                  post.kost2_cost_center_id,
-                  post.is_opening_balance_posting,
-                ]
-              );
-            } catch (err) {
-              if (err.code == "ER_DUP_ENTRY") {
-                dups++;
-                // Already inserted.
-              }
-            }
-            if (inc) prog.increment(1);
-          }
-
-          return dups;
-        };
-
-        const getDateString = (month) => {
-          let d = new Date(parseInt(fiscalYear.substr(0, 4)), month, 1, 0);
-          return moment(d).tz("Europe/Berlin").format();
-        };
-
-        // if last date is present and in the same fiscal year, start at that month from beginning
-        let start = 0,
-          posts = 0,
-          dups = 0;
-        prog.start(12, start);
-
-        for (let month = 0; month <= 11; month++) {
-          await con.query("START TRANSACTION");
-          let postings = await getPostings(
-            "date ge " +
-              getDateString(month, 1) +
-              " and date le " +
-              getDateString(month + 1, 1)
-          );
-          let d = await addPostings(postings, false);
-          posts += postings.length;
-          dups += d;
-          prog.increment(1);
-          await con.query("COMMIT");
-        }
-
-        console.log("\nPostings:", posts, "Duplikate:", dups);
-
-        prog.stop();
-      };
-
-      // For each client
-      for (let client of clients) {
-        console.info("Verwendeter Klient:", client.name);
-
-        // Get fiscal years
-        var fiscalYearIds = [];
-        var fiscalRes = await axios.get(
+        var postingRes = await axios.get(
           hostname +
             "datev/api/accounting/v1/clients/" +
             client.id +
-            "/fiscal-years",
-          options
+            "/fiscal-years/" +
+            fiscalYear +
+            "/account-postings",
+          postingOptions
         );
-        if (fiscalRes.status == 200) {
-          var fiscalYears = fiscalRes.data;
-          fiscalYearIds = fiscalYears.map((f) => f.id);
+        if (postingRes.status == 200) {
+          postings = postingRes.data;
         }
+        return postings;
+      };
 
-        const arg = process.argv[2];
-        if (arg == "lastyear") {
-          let fiscalYear;
-          if (fiscalYearIds.length >= 2) {
-            fiscalYear = fiscalYearIds[fiscalYearIds.length - 2];
-            await doProcedure(client, fiscalYear);
-          } else {
-            console.warn("Letztes Jahr ist nicht verfügbar!");
-          }
-        } else if (arg == "thisyear") {
-          let fiscalYear;
-          if (fiscalYearIds.length >= 1) {
-            fiscalYear = fiscalYearIds[fiscalYearIds.length - 1];
-            await doProcedure(client, fiscalYear);
-          } else {
-            console.warn("Dieses Jahr ist nicht verfügbar!");
-          }
-        } else if (arg == "startat") {
-          let startat = process.argv[3];
-          if (startat) {
-            var ok = false;
-            for (let fiscalYear of fiscalYearIds) {
-              if (fiscalYear.startsWith(startat)) ok = true;
-              if (ok) await doProcedure(client, fiscalYear);
+      const addPostings = async (p, inc = true) => {
+        let dups = 0;
+        for (let post of p) {
+          try {
+            await con.query(
+              "INSERT INTO `" +
+                client.id +
+                "` " +
+                account_postings +
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              [
+                post.id,
+                post.date,
+                post.account_number,
+                post.accounting_sequence_id,
+                post.amount_debit,
+                post.amount_credit,
+                post.contra_account_number,
+                post.posting_description,
+                post.advance_payment ? post.advance_payment.tax_key : null,
+                post.tax_rate,
+                post.kost1_cost_center_id,
+                post.kost2_cost_center_id,
+                post.is_opening_balance_posting,
+              ]
+            );
+          } catch (err) {
+            if (err.code == "ER_DUP_ENTRY") {
+              dups++;
+              // Already inserted.
             }
           }
-        } else {
-          for (let fiscalYear of fiscalYearIds) {
-            await doProcedure(client, fiscalYear);
-          }
+          if (inc) prog.increment(1);
         }
+
+        return dups;
+      };
+
+      const getDateString = (month) => {
+        let d = new Date(parseInt(fiscalYear.substr(0, 4)), month, 1, 0);
+        return moment(d).tz("Europe/Berlin").format();
+      };
+
+      // if last date is present and in the same fiscal year, start at that month from beginning
+      let start = 0,
+        posts = 0,
+        dups = 0;
+      prog.start(12, start);
+
+      for (let month = 0; month <= 11; month++) {
+        await con.query("START TRANSACTION");
+        let postings = await getPostings(
+          "date ge " +
+            getDateString(month, 1) +
+            " and date le " +
+            getDateString(month + 1, 1)
+        );
+        let d = await addPostings(postings, false);
+        posts += postings.length;
+        dups += d;
+        prog.increment(1);
+        await con.query("COMMIT");
       }
 
-      // Close connection
-      await con.end();
-      console.log("Datenbankverbindung geschlossen.");
-    });
+      log("\nPostings:", posts, "Duplikate:", dups);
+
+      prog.stop();
+    };
+
+    // For each client
+    for (let client of clients) {
+      console.info("Verwendeter Klient:", client.name);
+
+      // Get fiscal years
+      var fiscalYearIds = [];
+      var fiscalRes = await axios.get(
+        hostname +
+          "datev/api/accounting/v1/clients/" +
+          client.id +
+          "/fiscal-years",
+        options
+      );
+      if (fiscalRes.status == 200) {
+        var fiscalYears = fiscalRes.data;
+        fiscalYearIds = fiscalYears.map((f) => f.id);
+      }
+
+      const arg = process.argv[2];
+      if (arg == "lastyear") {
+        let fiscalYear;
+        if (fiscalYearIds.length >= 2) {
+          fiscalYear = fiscalYearIds[fiscalYearIds.length - 2];
+          await doProcedure(client, fiscalYear);
+        } else {
+          log("Letztes Jahr ist nicht verfügbar!");
+        }
+      } else if (arg == "thisyear") {
+        let fiscalYear;
+        if (fiscalYearIds.length >= 1) {
+          fiscalYear = fiscalYearIds[fiscalYearIds.length - 1];
+          await doProcedure(client, fiscalYear);
+        } else {
+          log("Dieses Jahr ist nicht verfügbar!");
+        }
+      } else if (arg == "startat") {
+        let startat = process.argv[3];
+        if (startat) {
+          var ok = false;
+          for (let fiscalYear of fiscalYearIds) {
+            if (fiscalYear.startsWith(startat)) ok = true;
+            if (ok) await doProcedure(client, fiscalYear);
+          }
+        }
+      } else {
+        for (let fiscalYear of fiscalYearIds) {
+          await doProcedure(client, fiscalYear);
+        }
+      }
+    }
   } catch (err) {
-    console.warn("Fehler beim Lesen der Konfiguration.");
-    console.warn(err);
+    log(err);
   }
+
+  // Log
+  await con.query(
+    "INSERT INTO `" + username + "-log` (date, log) VALUES (?, ?)",
+    [
+      moment().format("YYYY-MM-DD HH:mm:ss"),
+      logContent.replaceAll(password, "***").replaceAll(dbPassword, "***"), // sanitize
+    ]
+  );
+  log("Uploaded log.");
+
+  // Close connection
+  await con.end();
+  log("Datenbankverbindung geschlossen.");
+
+  // Exit
+  log("Programm beendet.");
+  process.exit();
 };
 
 main();
