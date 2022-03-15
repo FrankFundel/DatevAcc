@@ -409,7 +409,8 @@ const main = async () => {
       prog.start(12, start);
 
       for (let month = 0; month <= 11; month++) {
-        await con.query("START TRANSACTION");
+        //await con.query("START TRANSACTION");
+        await con.beginTransaction();
         let postings = await getPostings(
           "date ge " +
             getDateString(month) +
@@ -420,7 +421,8 @@ const main = async () => {
         posts += postings.length;
         dups += d;
         prog.increment(1);
-        await con.query("COMMIT");
+        //await con.query("COMMIT");
+        await con.commit();
       }
 
       log("\nPostings:", posts, "Duplikate:", dups);
