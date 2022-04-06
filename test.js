@@ -45,22 +45,31 @@ const run = async () => {
   };
 
   //let cmd = "date ge " + getDateString(5) + " and date le " + getDateString(6);
-  let cmd = "date ge 2021-06-01T00:00:00+00:00 and date le 2021-07-01T00:00:00+00:00";
+  let cmd =
+    "date ge 2021-06-01T00:00:00+00:00 and date le 2021-07-01T00:00:00+00:00";
   //let cmd = "account_number eq 48220000";
   let postings = await getPostings(cmd);
   console.log(cmd, postings.length);
-  postings.forEach(post => {
+  postings.forEach((post) => {
     if (post.account_number == 48220000) {
-      console.log("FOUND 1", post.date, post.accounting_sequence_id, post.amount_debit);
+      console.log(
+        "FOUND 1",
+        post.date,
+        post.accounting_sequence_id,
+        post.amount_debit
+      );
     }
     if (post.accounting_sequence_id == "06-2021/0010-1") {
       console.log("FOUND 2");
     }
-    if (post.account_number == 48220000 && post.accounting_sequence_id == "06-2021/0010-1") {
+    if (
+      post.account_number == 48220000 &&
+      post.accounting_sequence_id == "06-2021/0010-1"
+    ) {
       console.log("FOUND 3");
     }
   });
-}
+};
 run();
 
 // Check for:
