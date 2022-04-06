@@ -1,65 +1,77 @@
-const text = `id                                                      VARCHAR(12) PRIMARY KEY,
-  account_number                                          INT,
-  accounting_reason                                       VARCHAR(34),
-  accounting_sequence_id                                  VARCHAR(12),
-  accounting_transaction_key                              INT,
-  accounting_transaction_key49_additional_function        INT,
-  accounting_transaction_key49_main_function_number       INT,
-  accounting_transaction_key49_main_function_type         INT,
-  additional_functions_for_goods_and_services             INT,
-  additional_information-0-additional_information_type    VARCHAR(7),
-  additional_information-0-additional_information_content VARCHAR(9),
-  amount_credit                                           DECIMAL(5,2),
-  amount_debit                                            DECIMAL(5,2),
-  amount_entered                                          DECIMAL(5,2),
-  advance_payment-eu_member_state                         VARCHAR(2),
-  advance_payment-eu_tax_rate                             DECIMAL(5,2),
-  advance_payment-order_number                            VARCHAR(30),
-  advance_payment-record_type                             VARCHAR(2),
-  advance_payment-revenue_account                         INT,
-  advance_payment-tax_key                                 INT,
-  billing_reference                                       VARCHAR(50),
-  cash_discount_type                                      VARCHAR(50),
-  cases_related_to_goods_and_services                     INT,
-  contra_account_number                                   INT,
-  currency_code                                           VARCHAR(3),
-  currency_code_of_base_transaction_amount                VARCHAR(3),
-  date                                                    DATE,
-  date_assigned_tax_period                                DATE,
-  delivery_date                                           DATE,
-  differing_taxation_method                               VARCHAR(100),
-  document_field1                                         VARCHAR(36),
-  document_field2                                         VARCHAR(12),
-  document_link                                           VARCHAR(210),
-  eu_tax_rate                                             DECIMAL(5,2),
-  eu_tax_rate_for_country_of_origin                       DECIMAL(5,2),
-  eu_vat_id                                               VARCHAR(15),
-  eu_vat_id_for_country_of_origin                         VARCHAR(50),
-  exchange_rate                                           DECIMAL(12,6),
-  general_reversal                                        BOOL,
-  is_opening_balance_posting                              BOOL,
-  kost_quantity                                           DECIMAL(6,6),
-  kost1_cost_center_id                                    VARCHAR(20),
-  kost2_cost_center_id                                    VARCHAR(20),
-  open_item_information-assessment_year                   INT,
-  open_item_information-assigned_due_date                 DATE,
-  open_item_information-business_partner_bank_position    INT,
-  open_item_information-circumstance_type                 INT,
-  open_item_information-has_dunning_block                 BOOL,
-  open_item_information-has_interest_block                BOOL,
-  open_item_information-payment_method                    VARCHAR(20),
-  open_item_information-receivable_type_id                VARCHAR(50),
-  open_item_information-sepa_mandate_reference            VARCHAR(50),
-  open_item_information-various_address_id                VARCHAR(50),
-  mark_of_origin                                          VARCHAR(3),
-  posting_description                                     VARCHAR(50),
-  record_type                                             VARCHAR(30),
-  tax_rate                                                DECIMAL(5,2)`;
+const axios = require("axios");
+var moment = require("moment-timezone");
 
-var fields = [];
-text.split("\n").forEach((line) => {
-  let field = line.trim().split(" ")[0];
-  fields.push("post." + field.replace("-", "."));
-});
-//console.log(fields.join(", "));
-console.log("?,".repeat(57).slice(0, -1));
+var hostname = "http://192.168.100.12:58454/";
+var client = { id: "b2a79445-1706-42b5-b136-8db57c8cad16" };
+let fiscalYear = "20210101";
+
+const options = {
+  responseType: "json",
+  auth: {
+    username: "spedadmin",
+    password: "FixMaster.1",
+  },
+  headers: {
+    Accept: "application/json;charset=utf-8",
+    "Content-Type": "application/json;charset=utf-8",
+  },
+};
+
+const run = async () => {
+  // get postings after this date
+  const getPostings = async (date) => {
+    var postings = [];
+    var postingOptions = { ...options };
+    postingOptions.params = { filter: date };
+
+    var postingRes = await axios.get(
+      hostname +
+        "datev/api/accounting/v1/clients/" +
+        client.id +
+        "/fiscal-years/" +
+        fiscalYear +
+        "/account-postings",
+      postingOptions
+    );
+    if (postingRes.status == 200) {
+      postings = postingRes.data;
+    }
+    return postings;
+  };
+
+  const getDateString = (month) => {
+    let d = new Date(parseInt(fiscalYear), month, 1, 0);
+    return moment(d).tz("Europe/Berlin").format();
+  };
+
+  //let cmd = "date ge " + getDateString(5) + " and date le " + getDateString(6);
+  let cmd =
+    "date ge 2021-06-01T00:00:00+00:00 and date le 2021-07-01T00:00:00+00:00";
+  //let cmd = "account_number eq 48220000";
+  let postings = await getPostings(cmd);
+  console.log(cmd, postings.length);
+  postings.forEach((post) => {
+    if (post.account_number == 48220000) {
+      console.log(
+        "FOUND 1",
+        post.date,
+        post.accounting_sequence_id,
+        post.amount_debit
+      );
+    }
+    if (post.accounting_sequence_id == "06-2021/0010-1") {
+      console.log("FOUND 2");
+    }
+    if (
+      post.account_number == 48220000 &&
+      post.accounting_sequence_id == "06-2021/0010-1"
+    ) {
+      console.log("FOUND 3");
+    }
+  });
+};
+run();
+
+// Check for:
+// Accounting_sequence_id = 06-2021/0010
+// Account_Number = 48220000
