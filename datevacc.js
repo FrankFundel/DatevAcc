@@ -8,11 +8,13 @@ var util = require("util");
 
 const configPath = "./config.json";
 
+// identificator = id + accounting_sequence_id
 const account_postings_schema = `(
-  id                                                      VARCHAR(20) UNIQUE,
+  identificator                                           VARCHAR(34) UNIQUE,
+  id                                                      VARCHAR(20),
   account_number                                          INT,
   accounting_reason                                       VARCHAR(34),
-  accounting_sequence_id                                  VARCHAR(12),
+  accounting_sequence_id                                  VARCHAR(14),
   accounting_transaction_key                              INT,
   accounting_transaction_key49_additional_function        INT,
   accounting_transaction_key49_main_function_number       INT,
@@ -68,7 +70,7 @@ const account_postings_schema = `(
   tax_rate                                                DECIMAL(12,2)
 )`;
 
-const account_postings = `(id, account_number, accounting_reason, accounting_sequence_id, accounting_transaction_key, accounting_transaction_key49_additional_function, accounting_transaction_key49_main_function_number, accounting_transaction_key49_main_function_type, additional_functions_for_goods_and_services, additional_information$additional_information_type, additional_information$additional_information_content, amount_credit, amount_debit, amount_entered, advance_payment$eu_member_state, advance_payment$eu_tax_rate, advance_payment$order_number, advance_payment$record_type, advance_payment$revenue_account, advance_payment$tax_key, billing_reference, cash_discount_type, cases_related_to_goods_and_services, contra_account_number, currency_code, currency_code_of_base_transaction_amount, date, date_assigned_tax_period, delivery_date, differing_taxation_method, document_field1, document_field2, document_link, eu_tax_rate, eu_tax_rate_for_country_of_origin, eu_vat_id, eu_vat_id_for_country_of_origin, exchange_rate, general_reversal, is_opening_balance_posting, kost_quantity, kost1_cost_center_id, kost2_cost_center_id, open_item_information$assessment_year, open_item_information$assigned_due_date, open_item_information$business_partner_bank_position, open_item_information$circumstance_type, open_item_information$has_dunning_block, open_item_information$has_interest_block, open_item_information$payment_method, open_item_information$receivable_type_id, open_item_information$sepa_mandate_reference, open_item_information$various_address_id, mark_of_origin, posting_description, record_type, tax_rate)`;
+const account_postings = `(identificator, id, account_number, accounting_reason, accounting_sequence_id, accounting_transaction_key, accounting_transaction_key49_additional_function, accounting_transaction_key49_main_function_number, accounting_transaction_key49_main_function_type, additional_functions_for_goods_and_services, additional_information$additional_information_type, additional_information$additional_information_content, amount_credit, amount_debit, amount_entered, advance_payment$eu_member_state, advance_payment$eu_tax_rate, advance_payment$order_number, advance_payment$record_type, advance_payment$revenue_account, advance_payment$tax_key, billing_reference, cash_discount_type, cases_related_to_goods_and_services, contra_account_number, currency_code, currency_code_of_base_transaction_amount, date, date_assigned_tax_period, delivery_date, differing_taxation_method, document_field1, document_field2, document_link, eu_tax_rate, eu_tax_rate_for_country_of_origin, eu_vat_id, eu_vat_id_for_country_of_origin, exchange_rate, general_reversal, is_opening_balance_posting, kost_quantity, kost1_cost_center_id, kost2_cost_center_id, open_item_information$assessment_year, open_item_information$assigned_due_date, open_item_information$business_partner_bank_position, open_item_information$circumstance_type, open_item_information$has_dunning_block, open_item_information$has_interest_block, open_item_information$payment_method, open_item_information$receivable_type_id, open_item_information$sepa_mandate_reference, open_item_information$various_address_id, mark_of_origin, posting_description, record_type, tax_rate)`;
 
 if (!fs.existsSync("logs/")) {
   fs.mkdirSync("logs/");
@@ -287,106 +289,109 @@ const main = async () => {
       };
 
       const addPostings = async (p, inc = true) => {
-        try {
-          await con.query(
-            "INSERT IGNORE INTO `" +
-              client.id +
-              "` " +
-              account_postings +
-              " VALUES ?",
-            [
-              p.map((post) => [
-                post.id,
-                post.account_number,
-                post.accounting_reason,
-                post.accounting_sequence_id,
-                post.accounting_transaction_key,
-                post.accounting_transaction_key49_additional_function,
-                post.accounting_transaction_key49_main_function_number,
-                post.accounting_transaction_key49_main_function_type,
-                post.additional_functions_for_goods_and_services,
-                post.additional_information && post.additional_information[0]
-                  ? post.additional_information[0].additional_information_type
-                  : null,
-                post.additional_information && post.additional_information[0]
-                  ? post.additional_information[0]
-                      .additional_information_content
-                  : null,
-                post.amount_credit,
-                post.amount_debit,
-                post.amount_entered,
-                post.advance_payment
-                  ? post.advance_payment.eu_member_state
-                  : null,
-                post.advance_payment ? post.advance_payment.eu_tax_rate : null,
-                post.advance_payment ? post.advance_payment.order_number : null,
-                post.advance_payment ? post.advance_payment.record_type : null,
-                post.advance_payment
-                  ? post.advance_payment.revenue_account
-                  : null,
-                post.advance_payment ? post.advance_payment.tax_key : null,
-                post.billing_reference,
-                post.cash_discount_type,
-                post.cases_related_to_goods_and_services,
-                post.contra_account_number,
-                post.currency_code,
-                post.currency_code_of_base_transaction_amount,
-                post.date,
-                post.date_assigned_tax_period,
-                post.delivery_date,
-                post.differing_taxation_method,
-                post.document_field1,
-                post.document_field2,
-                post.document_link,
-                post.eu_tax_rate,
-                post.eu_tax_rate_for_country_of_origin,
-                post.eu_vat_id,
-                post.eu_vat_id_for_country_of_origin,
-                post.exchange_rate,
-                post.general_reversal,
-                post.is_opening_balance_posting,
-                post.kost_quantity,
-                post.kost1_cost_center_id,
-                post.kost2_cost_center_id,
-                post.open_item_information
-                  ? post.open_item_information.assessment_year
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.assigned_due_date
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.business_partner_bank_position
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.circumstance_type
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.has_dunning_block
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.has_interest_block
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.payment_method
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.receivable_type_id
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.sepa_mandate_reference
-                  : null,
-                post.open_item_information
-                  ? post.open_item_information.various_address_id
-                  : null,
-                post.mark_of_origin,
-                post.posting_description,
-                post.record_type,
-                post.tax_rate,
-              ]),
-            ]
-          );
-        } catch (err) {
-          log(err);
+        if (p.length > 0) {
+          try {
+            await con.query(
+              "INSERT IGNORE INTO `" +
+                client.id +
+                "` " +
+                account_postings +
+                " VALUES ?",
+              [
+                p.map((post) => [
+                  post.id + post.accounting_sequence_id,
+                  post.id,
+                  post.account_number,
+                  post.accounting_reason,
+                  post.accounting_sequence_id,
+                  post.accounting_transaction_key,
+                  post.accounting_transaction_key49_additional_function,
+                  post.accounting_transaction_key49_main_function_number,
+                  post.accounting_transaction_key49_main_function_type,
+                  post.additional_functions_for_goods_and_services,
+                  post.additional_information && post.additional_information[0]
+                    ? post.additional_information[0].additional_information_type
+                    : null,
+                  post.additional_information && post.additional_information[0]
+                    ? post.additional_information[0]
+                        .additional_information_content
+                    : null,
+                  post.amount_credit,
+                  post.amount_debit,
+                  post.amount_entered,
+                  post.advance_payment
+                    ? post.advance_payment.eu_member_state
+                    : null,
+                  post.advance_payment ? post.advance_payment.eu_tax_rate : null,
+                  post.advance_payment ? post.advance_payment.order_number : null,
+                  post.advance_payment ? post.advance_payment.record_type : null,
+                  post.advance_payment
+                    ? post.advance_payment.revenue_account
+                    : null,
+                  post.advance_payment ? post.advance_payment.tax_key : null,
+                  post.billing_reference,
+                  post.cash_discount_type,
+                  post.cases_related_to_goods_and_services,
+                  post.contra_account_number,
+                  post.currency_code,
+                  post.currency_code_of_base_transaction_amount,
+                  post.date,
+                  post.date_assigned_tax_period,
+                  post.delivery_date,
+                  post.differing_taxation_method,
+                  post.document_field1,
+                  post.document_field2,
+                  post.document_link,
+                  post.eu_tax_rate,
+                  post.eu_tax_rate_for_country_of_origin,
+                  post.eu_vat_id,
+                  post.eu_vat_id_for_country_of_origin,
+                  post.exchange_rate,
+                  post.general_reversal,
+                  post.is_opening_balance_posting,
+                  post.kost_quantity,
+                  post.kost1_cost_center_id,
+                  post.kost2_cost_center_id,
+                  post.open_item_information
+                    ? post.open_item_information.assessment_year
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.assigned_due_date
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.business_partner_bank_position
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.circumstance_type
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.has_dunning_block
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.has_interest_block
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.payment_method
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.receivable_type_id
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.sepa_mandate_reference
+                    : null,
+                  post.open_item_information
+                    ? post.open_item_information.various_address_id
+                    : null,
+                  post.mark_of_origin,
+                  post.posting_description,
+                  post.record_type,
+                  post.tax_rate,
+                ]),
+              ]
+            );
+          } catch (err) {
+            log(err);
+          }
         }
         if (inc) prog.increment(1);
       };
