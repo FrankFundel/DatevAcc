@@ -44,14 +44,13 @@ const run = async () => {
     return moment(d).tz("Europe/Berlin").format();
   };
 
-  //let cmd = "date ge " + getDateString(5) + " and date le " + getDateString(6);
   let cmd =
-    "date ge 2021-06-01T00:00:00+00:00 and date le 2021-07-01T00:00:00+00:00";
-  //let cmd = "account_number eq 48220000";
+    "date ge 2022-01-01T00:00:00+01:00 and date le 2022-02-01T00:00:00+01:00";
+  
   let postings = await getPostings(cmd);
   console.log(cmd, postings.length);
   postings.forEach((post) => {
-    if (post.account_number == 48220000) {
+    if (post.account_number == 42400000) {
       console.log(
         "FOUND 1",
         post.date,
@@ -59,19 +58,15 @@ const run = async () => {
         post.amount_debit
       );
     }
-    if (post.accounting_sequence_id == "06-2021/0010-1") {
+    if (post.accounting_sequence_id == "12-2021/0002") {
       console.log("FOUND 2");
     }
     if (
-      post.account_number == 48220000 &&
-      post.accounting_sequence_id == "06-2021/0010-1"
+      post.account_number == 42400000 &&
+      post.accounting_sequence_id == "12-2021/0002"
     ) {
-      console.log("FOUND 3");
+      console.log("FOUND 3", post);
     }
   });
 };
 run();
-
-// Check for:
-// Accounting_sequence_id = 06-2021/0010
-// Account_Number = 48220000

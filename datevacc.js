@@ -396,28 +396,30 @@ const main = async () => {
         if (inc) prog.increment(1);
       };
 
-      const getDateString = (month) => {
-        let d = new Date(parseInt(fiscalYear.substr(0, 4)), month, 1, 0);
+      const getDateString = (y, month) => {
+        let d = new Date(parseInt(fiscalYear.substr(0, 4)) + y, month, 1, 0);
         return moment(d).tz("Europe/Berlin").format();
       };
 
-      // if last date is present and in the same fiscal year, start at that month from beginning
       let start = 0;
-      prog.start(12, start);
+      prog.start(12*3, start);
 
-      for (let month = 0; month <= 11; month++) {
-        //await con.query("START TRANSACTION");
-        await con.beginTransaction();
-        let postings = await getPostings(
-          "date ge " +
-            getDateString(month) +
-            " and date le " +
-            getDateString(month + 1)
-        );
-        await addPostings(postings, false);
-        prog.increment(1);
-        //await con.query("COMMIT");
-        await con.commit();
+      // look also in the year before and after in the same fiscal year
+      for (let y = -1; y <= 1; y++) {
+        for (let month = 0; month < 12; month++) {
+          //await con.query("START TRANSACTION");
+          await con.beginTransaction();
+          let postings = await getPostings(
+            "date ge " +
+              getDateString(y, month) +
+              " and date le " +
+              getDateString(y, month + 1)
+          );
+          await addPostings(postings, false);
+          prog.increment(1);
+          //await con.query("COMMIT");
+          await con.commit();
+        }
       }
 
       prog.stop();
