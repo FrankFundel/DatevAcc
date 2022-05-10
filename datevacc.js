@@ -342,21 +342,24 @@ const main = async () => {
       const getStocktakings = async (date) => {
         var stocktakings = [];
         var stocktakingOptions = { ...options };
-        stocktakingOptions.params = { filter: date };
 
-        var stocktakingRes = await axios.get(
-          hostname +
-            "datev/api/accounting/v1/clients/" +
-            client.id +
-            "/fiscal-years/" +
-            fiscalYear +
-            "/assets/stocktakings",
-          stocktakingOptions
-        );
-        if (stocktakingRes.status == 200) {
-          stocktakings = stocktakingRes.data;
+        try {
+          var stocktakingRes = await axios.get(
+            hostname +
+              "datev/api/accounting/v1/clients/" +
+              client.id +
+              "/fiscal-years/" +
+              fiscalYear +
+              "/assets/stocktakings",
+            stocktakingOptions
+          );
+          if (stocktakingRes.status == 200) {
+            stocktakings = stocktakingRes.data;
+          }
+          return stocktakings;
+        } catch (err) {
+          return null;
         }
-        return stocktakings;
       };
 
       const addPostings = async (p, inc = true) => {
@@ -529,15 +532,17 @@ const main = async () => {
         return moment(d).tz("Europe/Berlin").format();
       };
 
-      let start = 0;
-      prog.start(12 * 3, start);
+      log("Hole Bestandsaufnahmen");
+      await con.beginTransaction();
+      let stocktakings = await getStocktakings();
+      if(stocktakings) await addStocktakings(stocktakings, false);
+      await con.commit();
 
-      // look also in the year before and after in the same fiscal year
-      for (let y = -1; y <= 1; y++) {
+      log("Hole Kontobuchungen");
+      prog.start(12 * 3, 0);
+      for (let y = -1; y <= 1; y++) { // look also in the year before and after in the same fiscal year
         for (let month = 0; month < 12; month++) {
           await con.beginTransaction();
-
-          // Get Postings
           let postings = await getPostings(
             "date ge " +
               getDateString(y, month) +
@@ -545,21 +550,10 @@ const main = async () => {
               getDateString(y, month + 1)
           );
           await addPostings(postings, false);
-
-          // Get Stocktakings
-          let stocktakings = await getStocktakings(
-            "date ge " +
-              getDateString(y, month) +
-              " and date le " +
-              getDateString(y, month + 1)
-          );
-          await addStocktakings(stocktakings, false);
-
           prog.increment(1);
           await con.commit();
         }
       }
-
       prog.stop();
     };
 
