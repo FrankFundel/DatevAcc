@@ -487,7 +487,7 @@ const main = async () => {
                 " VALUES ?",
               [
                 s.map((stock) => [
-                  stock.id + stock.accounting_sequence_id,
+                  stock.id + stock.asset_number,
                   stock.id,
                   stock.asset_number,
                   stock.inventory_number,
@@ -535,12 +535,13 @@ const main = async () => {
       log("Hole Bestandsaufnahmen");
       await con.beginTransaction();
       let stocktakings = await getStocktakings();
-      if(stocktakings) await addStocktakings(stocktakings, false);
+      if (stocktakings) await addStocktakings(stocktakings, false);
       await con.commit();
 
       log("Hole Kontobuchungen");
       prog.start(12 * 3, 0);
-      for (let y = -1; y <= 1; y++) { // look also in the year before and after in the same fiscal year
+      for (let y = -1; y <= 1; y++) {
+        // look also in the year before and after in the same fiscal year
         for (let month = 0; month < 12; month++) {
           await con.beginTransaction();
           let postings = await getPostings(
