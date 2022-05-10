@@ -70,7 +70,50 @@ const account_postings_schema = `(
   tax_rate                                                DECIMAL(12,2)
 )`;
 
-const account_postings = `(identificator, id, account_number, accounting_reason, accounting_sequence_id, accounting_transaction_key, accounting_transaction_key49_additional_function, accounting_transaction_key49_main_function_number, accounting_transaction_key49_main_function_type, additional_functions_for_goods_and_services, additional_information$additional_information_type, additional_information$additional_information_content, amount_credit, amount_debit, amount_entered, advance_payment$eu_member_state, advance_payment$eu_tax_rate, advance_payment$order_number, advance_payment$record_type, advance_payment$revenue_account, advance_payment$tax_key, billing_reference, cash_discount_type, cases_related_to_goods_and_services, contra_account_number, currency_code, currency_code_of_base_transaction_amount, date, date_assigned_tax_period, delivery_date, differing_taxation_method, document_field1, document_field2, document_link, eu_tax_rate, eu_tax_rate_for_country_of_origin, eu_vat_id, eu_vat_id_for_country_of_origin, exchange_rate, general_reversal, is_opening_balance_posting, kost_quantity, kost1_cost_center_id, kost2_cost_center_id, open_item_information$assessment_year, open_item_information$assigned_due_date, open_item_information$business_partner_bank_position, open_item_information$circumstance_type, open_item_information$has_dunning_block, open_item_information$has_interest_block, open_item_information$payment_method, open_item_information$receivable_type_id, open_item_information$sepa_mandate_reference, open_item_information$various_address_id, mark_of_origin, posting_description, record_type, tax_rate)`;
+const stock_takings_schema = `
+identificator                                           VARCHAR(34) UNIQUE,
+id                                                      VARCHAR(20),
+asset_number                                            INT,
+inventory_number                                        VARCHAR(15),
+accounting_reason                                       INT,
+general_ledger_account$account_number                   INT,
+general_ledger_account$caption                          VARCHAR(100),
+inventory_name                                          VARCHAR(60),
+acquisition_date                                        DATE,
+economic_lifetime                                       INT,
+kost1_cost_center_id                                    VARCHAR(20),
+branch                                                  INT,
+order_date                                              DATE,
+origin_type                                             VARCHAR(60),
+price                                                   DECIMAL(12, 2),
+quantity                                                DECIMAL(12, 2),
+stocktaking_date                                        DATE,
+unit                                                    VARCHAR(60),
+farmland_number                                         VARCHAR(60),
+serial_number                                           VARCHAR(60),
+location                                                VARCHAR(60),
+contract_number                                         VARCHAR(60),
+type_of_use                                             VARCHAR(60),
+condition                                               VARCHAR(60),
+isin                                                    VARCHAR(60),
+explanation_of_depreciation                             VARCHAR(60)
+`;
+
+const account_postings = `(identificator, id, account_number, accounting_reason, accounting_sequence_id, accounting_transaction_key,
+  accounting_transaction_key49_additional_function, accounting_transaction_key49_main_function_number, accounting_transaction_key49_main_function_type,
+  additional_functions_for_goods_and_services, additional_information$additional_information_type, additional_information$additional_information_content,
+  amount_credit, amount_debit, amount_entered, advance_payment$eu_member_state, advance_payment$eu_tax_rate, advance_payment$order_number,
+  advance_payment$record_type, advance_payment$revenue_account, advance_payment$tax_key, billing_reference, cash_discount_type, cases_related_to_goods_and_services,
+  contra_account_number, currency_code, currency_code_of_base_transaction_amount, date, date_assigned_tax_period, delivery_date, differing_taxation_method,
+  document_field1, document_field2, document_link, eu_tax_rate, eu_tax_rate_for_country_of_origin, eu_vat_id, eu_vat_id_for_country_of_origin, exchange_rate,
+  general_reversal, is_opening_balance_posting, kost_quantity, kost1_cost_center_id, kost2_cost_center_id, open_item_information$assessment_year,
+  open_item_information$assigned_due_date, open_item_information$business_partner_bank_position, open_item_information$circumstance_type,
+  open_item_information$has_dunning_block, open_item_information$has_interest_block, open_item_information$payment_method, open_item_information$receivable_type_id,
+  open_item_information$sepa_mandate_reference, open_item_information$various_address_id, mark_of_origin, posting_description, record_type, tax_rate)`;
+
+const stock_tackings = `(identificator, id, asset_number, inventory_number, accounting_reason, general_ledger_account$account_number, general_ledger_account$caption,
+  inventory_name, acquisition_date, economic_lifetime, kost1_cost_center_id, branch, order_date, origin_type, price, quantity, stocktaking_date, unit, farmland_number,
+  serial_number, location, contract_number, type_of_use, condition, isin, explanation_of_depreciation)`;
 
 if (!fs.existsSync("logs/")) {
   fs.mkdirSync("logs/");
@@ -261,13 +304,20 @@ const main = async () => {
       );
 
       await con.execute(
-        "CREATE TABLE IF NOT EXISTS `" +
+        "CREATE TABLE IF NOT EXISTS `postings_" +
           client.id +
           "` " +
           account_postings_schema
       );
 
-      // get postings after this date
+      await con.execute(
+        "CREATE TABLE IF NOT EXISTS `stocktakings_" +
+          client.id +
+          "` " +
+          stock_takings_schema
+      );
+
+      // get postings between this date
       const getPostings = async (date) => {
         var postings = [];
         var postingOptions = { ...options };
@@ -288,11 +338,32 @@ const main = async () => {
         return postings;
       };
 
+      // get stocktakings between this date
+      const getStocktakings = async (date) => {
+        var stocktakings = [];
+        var stocktakingOptions = { ...options };
+        stocktakingOptions.params = { filter: date };
+
+        var stocktakingRes = await axios.get(
+          hostname +
+            "datev/api/accounting/v1/clients/" +
+            client.id +
+            "/fiscal-years/" +
+            fiscalYear +
+            "/assets/stocktakings",
+          stocktakingOptions
+        );
+        if (stocktakingRes.status == 200) {
+          stocktakings = stocktakingRes.data;
+        }
+        return stocktakings;
+      };
+
       const addPostings = async (p, inc = true) => {
         if (p.length > 0) {
           try {
             await con.query(
-              "INSERT IGNORE INTO `" +
+              "INSERT IGNORE INTO `postings_" +
                 client.id +
                 "` " +
                 account_postings +
@@ -322,9 +393,15 @@ const main = async () => {
                   post.advance_payment
                     ? post.advance_payment.eu_member_state
                     : null,
-                  post.advance_payment ? post.advance_payment.eu_tax_rate : null,
-                  post.advance_payment ? post.advance_payment.order_number : null,
-                  post.advance_payment ? post.advance_payment.record_type : null,
+                  post.advance_payment
+                    ? post.advance_payment.eu_tax_rate
+                    : null,
+                  post.advance_payment
+                    ? post.advance_payment.order_number
+                    : null,
+                  post.advance_payment
+                    ? post.advance_payment.record_type
+                    : null,
                   post.advance_payment
                     ? post.advance_payment.revenue_account
                     : null,
@@ -396,19 +473,38 @@ const main = async () => {
         if (inc) prog.increment(1);
       };
 
+      const addStocktakings = async (s, inc = true) => {
+        if (s.length > 0) {
+          try {
+            await con.query(
+              "INSERT IGNORE INTO `stocktakings_" +
+                client.id +
+                "` " +
+                stock_tackings +
+                " VALUES ?",
+              [s.map((stock) => [])]
+            );
+          } catch (err) {
+            log(err);
+          }
+        }
+        if (inc) prog.increment(1);
+      };
+
       const getDateString = (y, month) => {
         let d = new Date(parseInt(fiscalYear.substr(0, 4)) + y, month, 1, 0);
         return moment(d).tz("Europe/Berlin").format();
       };
 
       let start = 0;
-      prog.start(12*3, start);
+      prog.start(12 * 3, start);
 
       // look also in the year before and after in the same fiscal year
       for (let y = -1; y <= 1; y++) {
         for (let month = 0; month < 12; month++) {
-          //await con.query("START TRANSACTION");
           await con.beginTransaction();
+
+          // Get Postings
           let postings = await getPostings(
             "date ge " +
               getDateString(y, month) +
@@ -416,8 +512,17 @@ const main = async () => {
               getDateString(y, month + 1)
           );
           await addPostings(postings, false);
+
+          // Get Stocktakings
+          let stocktakings = await getStocktakings(
+            "date ge " +
+              getDateString(y, month) +
+              " and date le " +
+              getDateString(y, month + 1)
+          );
+          await addStocktakings(stocktakings, false);
+
           prog.increment(1);
-          //await con.query("COMMIT");
           await con.commit();
         }
       }
