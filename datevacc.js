@@ -94,7 +94,7 @@ const stock_takings_schema = `(
   location                                                VARCHAR(60),
   contract_number                                         VARCHAR(60),
   type_of_use                                             VARCHAR(60),
-  condition                                               VARCHAR(60),
+  _condition                                              VARCHAR(60),
   isin                                                    VARCHAR(60),
   explanation_of_depreciation                             VARCHAR(60)
 )`;
@@ -113,7 +113,7 @@ const account_postings = `(identificator, id, account_number, accounting_reason,
 
 const stock_tackings = `(identificator, id, asset_number, inventory_number, accounting_reason, general_ledger_account$account_number, general_ledger_account$caption,
   inventory_name, acquisition_date, economic_lifetime, kost1_cost_center_id, branch, order_date, origin_type, price, quantity, stocktaking_date, unit, farmland_number,
-  serial_number, location, contract_number, type_of_use, condition, isin, explanation_of_depreciation)`;
+  serial_number, location, contract_number, type_of_use, _condition, isin, explanation_of_depreciation)`;
 
 if (!fs.existsSync("logs/")) {
   fs.mkdirSync("logs/");
