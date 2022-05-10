@@ -482,7 +482,40 @@ const main = async () => {
                 "` " +
                 stock_tackings +
                 " VALUES ?",
-              [s.map((stock) => [])]
+              [
+                s.map((stock) => [
+                  stock.id + stock.accounting_sequence_id,
+                  stock.id,
+                  stock.asset_number,
+                  stock.inventory_number,
+                  stock.accounting_reason,
+                  stock.general_ledger_account
+                    ? stock.general_ledger_account.account_number
+                    : null,
+                  stock.general_ledger_account
+                    ? stock.general_ledger_account.caption
+                    : null,
+                  stock.inventory_name,
+                  stock.acquisition_date,
+                  stock.economic_lifetime,
+                  stock.kost1_cost_center_id,
+                  stock.branch,
+                  stock.order_date,
+                  stock.origin_type,
+                  stock.price,
+                  stock.quantity,
+                  stock.stocktaking_date,
+                  stock.unit,
+                  stock.farmland_number,
+                  stock.serial_number,
+                  stock.location,
+                  stock.contract_number,
+                  stock.type_of_use,
+                  stock.condition,
+                  stock.isin,
+                  stock.explanation_of_depreciation,
+                ]),
+              ]
             );
           } catch (err) {
             log(err);
