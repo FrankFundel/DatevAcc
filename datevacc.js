@@ -1,10 +1,10 @@
-const axios = require("axios");
-var inquirer = require("inquirer");
-var fs = require("fs");
-var mssql = require("mssql");
-const cliProgress = require("cli-progress");
-var moment = require("moment-timezone");
-var util = require("util");
+import axios from "axios";
+import inquirer from "inquirer";
+import fs from "fs";
+import mssql from "mssql";
+import cliProgress from "cli-progress";
+import moment from "moment-timezone";
+import util from "util";
 
 const configPath = "./config.json";
 
