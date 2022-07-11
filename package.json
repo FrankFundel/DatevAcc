@@ -1,11 +1,17 @@
 {
+  "type": "module",
   "dependencies": {
     "axios": "^0.25.0",
     "cli-progress": "^3.10.0",
+    "crypto": "^1.0.1",
+    "express": "^4.18.1",
+    "express-session": "^1.17.3",
+    "hbs": "^4.2.0",
     "inquirer": "^8.2.0",
     "moment": "^2.29.1",
     "moment-timezone": "^0.5.34",
     "mssql": "^8.1.2",
+    "nordigen-node": "^1.1.0",
     "readline-sync": "^1.4.10"
   }
 }
