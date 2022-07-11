@@ -10,8 +10,8 @@ const configPath = "./config.json";
 
 // identificator = id + accounting_sequence_id
 const account_postings_schema = `(
-  identificator                                           VARCHAR(34) PRIMARY KEY WITH (IGNORE_DUP_KEY = ON),
-  id                                                      VARCHAR(20),
+  identificator                                           VARCHAR(39) PRIMARY KEY WITH (IGNORE_DUP_KEY = ON),
+  id                                                      VARCHAR(25),
   account_number                                          INT,
   accounting_reason                                       VARCHAR(34),
   accounting_sequence_id                                  VARCHAR(14),
@@ -71,8 +71,8 @@ const account_postings_schema = `(
 )`;
 
 const stock_takings_schema = `(
-  identificator                                           VARCHAR(34) PRIMARY KEY WITH (IGNORE_DUP_KEY = ON),
-  id                                                      VARCHAR(20),
+  identificator                                           VARCHAR(39) PRIMARY KEY WITH (IGNORE_DUP_KEY = ON),
+  id                                                      VARCHAR(25),
   asset_number                                            INT,
   inventory_number                                        VARCHAR(15),
   accounting_reason                                       INT,
