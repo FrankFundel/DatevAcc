@@ -1,7 +1,7 @@
 const axios = require("axios");
 var inquirer = require("inquirer");
 var fs = require("fs");
-var mysql = require("mysql2/promise");
+var mssql = require("mssql");
 const cliProgress = require("cli-progress");
 var moment = require("moment-timezone");
 var util = require("util");
@@ -10,7 +10,7 @@ const configPath = "./config.json";
 
 // identificator = id + accounting_sequence_id
 const account_postings_schema = `(
-  identificator                                           VARCHAR(34) UNIQUE,
+  identificator                                           VARCHAR(34) PRIMARY KEY WITH (IGNORE_DUP_KEY = ON),
   id                                                      VARCHAR(20),
   account_number                                          INT,
   accounting_reason                                       VARCHAR(34),
@@ -49,8 +49,8 @@ const account_postings_schema = `(
   eu_vat_id                                               VARCHAR(15),
   eu_vat_id_for_country_of_origin                         VARCHAR(50),
   exchange_rate                                           DECIMAL(16,6),
-  general_reversal                                        BOOL,
-  is_opening_balance_posting                              BOOL,
+  general_reversal                                        BIT,
+  is_opening_balance_posting                              BIT,
   kost_quantity                                           DECIMAL(16,6),
   kost1_cost_center_id                                    VARCHAR(20),
   kost2_cost_center_id                                    VARCHAR(20),
@@ -58,8 +58,8 @@ const account_postings_schema = `(
   open_item_information$assigned_due_date                 DATE,
   open_item_information$business_partner_bank_position    INT,
   open_item_information$circumstance_type                 INT,
-  open_item_information$has_dunning_block                 BOOL,
-  open_item_information$has_interest_block                BOOL,
+  open_item_information$has_dunning_block                 BIT,
+  open_item_information$has_interest_block                BIT,
   open_item_information$payment_method                    VARCHAR(20),
   open_item_information$receivable_type_id                VARCHAR(50),
   open_item_information$sepa_mandate_reference            VARCHAR(50),
@@ -71,7 +71,7 @@ const account_postings_schema = `(
 )`;
 
 const stock_takings_schema = `(
-  identificator                                           VARCHAR(34) UNIQUE,
+  identificator                                           VARCHAR(34) PRIMARY KEY WITH (IGNORE_DUP_KEY = ON),
   id                                                      VARCHAR(20),
   asset_number                                            INT,
   inventory_number                                        VARCHAR(15),
@@ -94,7 +94,7 @@ const stock_takings_schema = `(
   location                                                VARCHAR(60),
   contract_number                                         VARCHAR(60),
   type_of_use                                             VARCHAR(60),
-  _condition                                              VARCHAR(60),
+  condition                                              VARCHAR(60),
   isin                                                    VARCHAR(60),
   explanation_of_depreciation                             VARCHAR(60)
 )`;
@@ -111,9 +111,9 @@ const account_postings = `(identificator, id, account_number, accounting_reason,
   open_item_information$has_dunning_block, open_item_information$has_interest_block, open_item_information$payment_method, open_item_information$receivable_type_id,
   open_item_information$sepa_mandate_reference, open_item_information$various_address_id, mark_of_origin, posting_description, record_type, tax_rate)`;
 
-const stock_tackings = `(identificator, id, asset_number, inventory_number, accounting_reason, general_ledger_account$account_number, general_ledger_account$caption,
+const stock_takings = `(identificator, id, asset_number, inventory_number, accounting_reason, general_ledger_account$account_number, general_ledger_account$caption,
   inventory_name, acquisition_date, economic_lifetime, kost1_cost_center_id, branch, order_date, origin_type, price, quantity, stocktaking_date, unit, farmland_number,
-  serial_number, location, contract_number, type_of_use, _condition, isin, explanation_of_depreciation)`;
+  serial_number, location, contract_number, type_of_use, condition, isin, explanation_of_depreciation)`;
 
 if (!fs.existsSync("logs/")) {
   fs.mkdirSync("logs/");
@@ -235,7 +235,7 @@ const main = async () => {
         await inquirer.prompt({
           type: "input",
           name: "dbHost",
-          message: "Wie lautet die MySQL-Adresse?",
+          message: "Wie lautet die Datenbank-Adresse?",
         })
       ).dbHost;
     }
@@ -244,7 +244,7 @@ const main = async () => {
         await inquirer.prompt({
           type: "input",
           name: "dbUser",
-          message: "Wie lautet der MySQL-Nutzername?",
+          message: "Wie lautet der Datenbank-Nutzername?",
         })
       ).dbUser;
     }
@@ -253,7 +253,7 @@ const main = async () => {
         await inquirer.prompt({
           type: "password",
           name: "dbPassword",
-          message: "Wie lautet das MySQL-Passwort?",
+          message: "Wie lautet das Datenbank-Passwort?",
         })
       ).dbPassword;
     }
@@ -262,7 +262,7 @@ const main = async () => {
         await inquirer.prompt({
           type: "input",
           name: "dbDatabase",
-          message: "Wie lautet die MySQL-Datenbank?",
+          message: "Wie lautet der Datenbankname?",
         })
       ).dbDatabase;
     }
@@ -281,19 +281,41 @@ const main = async () => {
     log("Konfiguration wurde gespeichert.");
 
     // Start of the routine
-    var con = await mysql.createConnection({
-      host: dbHost,
+    var con = await mssql.connect({
+      server: dbHost,
       user: dbUser,
+      port: 1433,
       password: dbPassword,
       database: dbDatabase,
+      options: {
+        encrypt: true,
+      },
+      requestTimeout: 600000,
     });
     log("Mit der Datenbank verbunden.");
 
-    await con.execute(
-      "CREATE TABLE IF NOT EXISTS `" +
+    await con.query(
+      `IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='` +
         username +
-        "-log` (id INT PRIMARY KEY AUTO_INCREMENT, date DATE, log TEXT)"
+        `-log') CREATE TABLE "` +
+        username +
+        `-log" (id INT PRIMARY KEY IDENTITY, date DATE, log TEXT)`
     );
+
+    const parseEntries = (entries) => {
+      let entryStrings = [];
+      entries.forEach((entry) => {
+        entry.forEach((value, index) => {
+          if (value == null) {
+            entry[index] = "NULL";
+          } else {
+            entry[index] = "'" + value.toString().replaceAll("'", "''") + "'";
+          }
+        });
+        entryStrings.push("(" + entry.join(", ") + ")");
+      });
+      return entryStrings.join(", ");
+    };
 
     const doProcedure = async (client, fiscalYear) => {
       log("Verwendetes Fiskaljahr:", fiscalYear.substr(0, 4));
@@ -303,17 +325,21 @@ const main = async () => {
         cliProgress.Presets.shades_classic
       );
 
-      await con.execute(
-        "CREATE TABLE IF NOT EXISTS `postings_" +
+      await con.query(
+        `IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='postings_` +
           client.id +
-          "` " +
+          `') CREATE TABLE "postings_` +
+          client.id +
+          `" ` +
           account_postings_schema
       );
 
-      await con.execute(
-        "CREATE TABLE IF NOT EXISTS `stocktakings_" +
+      await con.query(
+        `IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='stocktakings_` +
           client.id +
-          "` " +
+          `') CREATE TABLE "stocktakings_` +
+          client.id +
+          `" ` +
           stock_takings_schema
       );
 
@@ -362,166 +388,159 @@ const main = async () => {
         }
       };
 
-      const addPostings = async (p, inc = true) => {
+      const addPostings = async (request, p, inc = true) => {
         if (p.length > 0) {
+          let entries = p.map((post) => [
+            post.id + post.accounting_sequence_id,
+            post.id,
+            post.account_number,
+            post.accounting_reason,
+            post.accounting_sequence_id,
+            post.accounting_transaction_key,
+            post.accounting_transaction_key49_additional_function,
+            post.accounting_transaction_key49_main_function_number,
+            post.accounting_transaction_key49_main_function_type,
+            post.additional_functions_for_goods_and_services,
+            post.additional_information && post.additional_information[0]
+              ? post.additional_information[0].additional_information_type
+              : null,
+            post.additional_information && post.additional_information[0]
+              ? post.additional_information[0].additional_information_content
+              : null,
+            post.amount_credit,
+            post.amount_debit,
+            post.amount_entered,
+            post.advance_payment ? post.advance_payment.eu_member_state : null,
+            post.advance_payment ? post.advance_payment.eu_tax_rate : null,
+            post.advance_payment ? post.advance_payment.order_number : null,
+            post.advance_payment ? post.advance_payment.record_type : null,
+            post.advance_payment ? post.advance_payment.revenue_account : null,
+            post.advance_payment ? post.advance_payment.tax_key : null,
+            post.billing_reference,
+            post.cash_discount_type,
+            post.cases_related_to_goods_and_services,
+            post.contra_account_number,
+            post.currency_code,
+            post.currency_code_of_base_transaction_amount,
+            post.date,
+            post.date_assigned_tax_period,
+            post.delivery_date,
+            post.differing_taxation_method,
+            post.document_field1,
+            post.document_field2,
+            post.document_link,
+            post.eu_tax_rate,
+            post.eu_tax_rate_for_country_of_origin,
+            post.eu_vat_id,
+            post.eu_vat_id_for_country_of_origin,
+            post.exchange_rate,
+            post.general_reversal,
+            post.is_opening_balance_posting,
+            post.kost_quantity,
+            post.kost1_cost_center_id,
+            post.kost2_cost_center_id,
+            post.open_item_information
+              ? post.open_item_information.assessment_year
+              : null,
+            post.open_item_information
+              ? post.open_item_information.assigned_due_date
+              : null,
+            post.open_item_information
+              ? post.open_item_information.business_partner_bank_position
+              : null,
+            post.open_item_information
+              ? post.open_item_information.circumstance_type
+              : null,
+            post.open_item_information
+              ? post.open_item_information.has_dunning_block
+              : null,
+            post.open_item_information
+              ? post.open_item_information.has_interest_block
+              : null,
+            post.open_item_information
+              ? post.open_item_information.payment_method
+              : null,
+            post.open_item_information
+              ? post.open_item_information.receivable_type_id
+              : null,
+            post.open_item_information
+              ? post.open_item_information.sepa_mandate_reference
+              : null,
+            post.open_item_information
+              ? post.open_item_information.various_address_id
+              : null,
+            post.mark_of_origin,
+            post.posting_description,
+            post.record_type,
+            post.tax_rate,
+          ]);
+
           try {
-            await con.query(
-              "INSERT IGNORE INTO `postings_" +
+            await request.query(
+              `INSERT INTO "postings_` +
                 client.id +
-                "` " +
+                `" ` +
                 account_postings +
-                " VALUES ?",
-              [
-                p.map((post) => [
-                  post.id + post.accounting_sequence_id,
-                  post.id,
-                  post.account_number,
-                  post.accounting_reason,
-                  post.accounting_sequence_id,
-                  post.accounting_transaction_key,
-                  post.accounting_transaction_key49_additional_function,
-                  post.accounting_transaction_key49_main_function_number,
-                  post.accounting_transaction_key49_main_function_type,
-                  post.additional_functions_for_goods_and_services,
-                  post.additional_information && post.additional_information[0]
-                    ? post.additional_information[0].additional_information_type
-                    : null,
-                  post.additional_information && post.additional_information[0]
-                    ? post.additional_information[0]
-                        .additional_information_content
-                    : null,
-                  post.amount_credit,
-                  post.amount_debit,
-                  post.amount_entered,
-                  post.advance_payment
-                    ? post.advance_payment.eu_member_state
-                    : null,
-                  post.advance_payment
-                    ? post.advance_payment.eu_tax_rate
-                    : null,
-                  post.advance_payment
-                    ? post.advance_payment.order_number
-                    : null,
-                  post.advance_payment
-                    ? post.advance_payment.record_type
-                    : null,
-                  post.advance_payment
-                    ? post.advance_payment.revenue_account
-                    : null,
-                  post.advance_payment ? post.advance_payment.tax_key : null,
-                  post.billing_reference,
-                  post.cash_discount_type,
-                  post.cases_related_to_goods_and_services,
-                  post.contra_account_number,
-                  post.currency_code,
-                  post.currency_code_of_base_transaction_amount,
-                  post.date,
-                  post.date_assigned_tax_period,
-                  post.delivery_date,
-                  post.differing_taxation_method,
-                  post.document_field1,
-                  post.document_field2,
-                  post.document_link,
-                  post.eu_tax_rate,
-                  post.eu_tax_rate_for_country_of_origin,
-                  post.eu_vat_id,
-                  post.eu_vat_id_for_country_of_origin,
-                  post.exchange_rate,
-                  post.general_reversal,
-                  post.is_opening_balance_posting,
-                  post.kost_quantity,
-                  post.kost1_cost_center_id,
-                  post.kost2_cost_center_id,
-                  post.open_item_information
-                    ? post.open_item_information.assessment_year
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.assigned_due_date
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.business_partner_bank_position
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.circumstance_type
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.has_dunning_block
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.has_interest_block
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.payment_method
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.receivable_type_id
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.sepa_mandate_reference
-                    : null,
-                  post.open_item_information
-                    ? post.open_item_information.various_address_id
-                    : null,
-                  post.mark_of_origin,
-                  post.posting_description,
-                  post.record_type,
-                  post.tax_rate,
-                ]),
-              ]
+                ` SELECT * FROM (VALUES ` +
+                parseEntries(entries) +
+                `) AS temp ` +
+                account_postings
             );
           } catch (err) {
-            log(err);
+            log("Error during postings.", err);
           }
         }
         if (inc) prog.increment(1);
       };
 
-      const addStocktakings = async (s, inc = true) => {
+      const addStocktakings = async (request, s, inc = true) => {
         if (s.length > 0) {
+          let entries = s.map((stock) => [
+            stock.id + stock.asset_number,
+            stock.id,
+            stock.asset_number,
+            stock.inventory_number,
+            stock.accounting_reason,
+            stock.general_ledger_account
+              ? stock.general_ledger_account.account_number
+              : null,
+            stock.general_ledger_account
+              ? stock.general_ledger_account.caption
+              : null,
+            stock.inventory_name,
+            stock.acquisition_date,
+            stock.economic_lifetime,
+            stock.kost1_cost_center_id,
+            stock.branch,
+            stock.order_date,
+            stock.origin_type,
+            stock.price,
+            stock.quantity,
+            stock.stocktaking_date,
+            stock.unit,
+            stock.farmland_number,
+            stock.serial_number,
+            stock.location,
+            stock.contract_number,
+            stock.type_of_use,
+            stock.condition,
+            stock.isin,
+            stock.explanation_of_depreciation,
+          ]);
+
           try {
-            await con.query(
-              "INSERT IGNORE INTO `stocktakings_" +
+            await request.query(
+              `INSERT INTO "stocktakings_` +
                 client.id +
-                "` " +
-                stock_tackings +
-                " VALUES ?",
-              [
-                s.map((stock) => [
-                  stock.id + stock.asset_number,
-                  stock.id,
-                  stock.asset_number,
-                  stock.inventory_number,
-                  stock.accounting_reason,
-                  stock.general_ledger_account
-                    ? stock.general_ledger_account.account_number
-                    : null,
-                  stock.general_ledger_account
-                    ? stock.general_ledger_account.caption
-                    : null,
-                  stock.inventory_name,
-                  stock.acquisition_date,
-                  stock.economic_lifetime,
-                  stock.kost1_cost_center_id,
-                  stock.branch,
-                  stock.order_date,
-                  stock.origin_type,
-                  stock.price,
-                  stock.quantity,
-                  stock.stocktaking_date,
-                  stock.unit,
-                  stock.farmland_number,
-                  stock.serial_number,
-                  stock.location,
-                  stock.contract_number,
-                  stock.type_of_use,
-                  stock.condition,
-                  stock.isin,
-                  stock.explanation_of_depreciation,
-                ]),
-              ]
+                `" ` +
+                stock_takings +
+                ` SELECT * FROM (VALUES ` +
+                parseEntries(entries) +
+                `) AS temp ` +
+                stock_takings
             );
           } catch (err) {
-            log(err);
+            log("Error during stocktakings.", err);
           }
         }
         if (inc) prog.increment(1);
@@ -533,26 +552,40 @@ const main = async () => {
       };
 
       log("Hole Bestandsaufnahmen");
-      await con.beginTransaction();
       let stocktakings = await getStocktakings();
-      if (stocktakings) await addStocktakings(stocktakings, false);
-      await con.commit();
+      let transaction = con.transaction();
+      await transaction.begin();
+      try {
+        let request = transaction.request();
+        if (stocktakings) await addStocktakings(request, stocktakings, false);
+        await transaction.commit();
+      } catch (err) {
+        log("Error during stocktaking transaction", err);
+        await transaction.rollback();
+      }
 
       log("Hole Kontobuchungen");
       prog.start(12 * 3, 0);
       for (let y = -1; y <= 1; y++) {
         // look also in the year before and after in the same fiscal year
         for (let month = 0; month < 12; month++) {
-          await con.beginTransaction();
           let postings = await getPostings(
             "date ge " +
               getDateString(y, month) +
               " and date le " +
               getDateString(y, month + 1)
           );
-          await addPostings(postings, false);
-          prog.increment(1);
-          await con.commit();
+          let transaction = con.transaction();
+          await transaction.begin();
+          try {
+            let request = transaction.request();
+            await addPostings(request, postings, false);
+            prog.increment(1);
+            await transaction.commit();
+          } catch (err) {
+            log("Error during postings transaction", err);
+            await transaction.rollback();
+          }
         }
       }
       prog.stop();
@@ -614,11 +647,16 @@ const main = async () => {
 
   // Log
   await con.query(
-    "INSERT INTO `" + username + "-log` (date, log) VALUES (?, ?)",
-    [
-      moment().format("YYYY-MM-DD HH:mm:ss"),
-      logContent.replaceAll(password, "***").replaceAll(dbPassword, "***"), // sanitize
-    ]
+    `INSERT INTO "` +
+      username +
+      `-log" (date, log) VALUES ('` +
+      moment().format("YYYY-MM-DD HH:mm:ss") +
+      `', '` +
+      logContent
+        .replaceAll(password, "***")
+        .replaceAll(dbPassword, "***")
+        .replaceAll("'", "''") +
+      `')`
   );
   log("Uploaded log.");
 
